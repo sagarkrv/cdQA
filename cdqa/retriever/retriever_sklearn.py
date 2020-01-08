@@ -1,6 +1,7 @@
 import pandas as pd
 import prettytable
 import time
+import re
 import math
 import numpy as np
 from abc import ABC, abstractmethod
@@ -8,7 +9,8 @@ from collections import OrderedDict
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.base import BaseEstimator
 from .vectorizers import BM25Vectorizer
-
+from nltk.stem import SnowballStemmer
+from nltk.tokenize import RegexpTokenizer
 
 class BaseRetriever(BaseEstimator, ABC):
     """
@@ -62,6 +64,8 @@ class BaseRetriever(BaseEstimator, ABC):
         best_idx_scores = OrderedDict(
             sorted(idx_scores, key=(lambda tup: tup[1]), reverse=True)[: self.top_n]
         )
+
+        closest_docs_indices = list(best_idx_scores.keys())
 
         # inspired from https://github.com/facebookresearch/DrQA/blob/50d0e49bb77fe0c6e881efb4b6fe2e61d3f92509/scripts/reader/interactive.py#L63
         if self.verbose:
@@ -368,7 +372,6 @@ class BM25Okapi(BaseRetriever):
     def _fit_vectorizer(self, df, y=None):
         #corpus = [doc.split(" ") for doc in df["content"].copy()]
         corpus = df["content"].copy()
-        #corpus = self._tokenize_corpus(corpus) 
         
         stemmer = SnowballStemmer('english')
         for idx,i in enumerate(corpus):
@@ -380,10 +383,9 @@ class BM25Okapi(BaseRetriever):
         self._calc_idf(nd)
         return self
 
-    def _tokenize_corpus(self, corpus):
+    def _tokenize_text(self, txt):
         tokenizer = RegexpTokenizer("\w+")
-        return corpus.apply(lambda x: tokenizer.tokenize(x)) \
-                 .apply(lambda x: " ".join(x))
+        return tokenizer.tokenize(txt)
         
 
     def _initialize(self, corpus):
@@ -448,7 +450,8 @@ class BM25Okapi(BaseRetriever):
         stemmer = SnowballStemmer('english')
         score = np.zeros(self.corpus_size)
         doc_len = np.array(self.doc_len)
-        tokenized_query = query.split(" ")
+
+        tokenized_query = self._tokenize_text(query) # Take away all punctuations
         for idx,i in enumerate(tokenized_query):
             tokenized_query[idx] = stemmer.stem(i)
 

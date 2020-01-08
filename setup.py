@@ -8,11 +8,9 @@ def read(file):
 
 setup(
     name="cdqa",
-    version="1.3.9",
-    author="Félix MIKAELIAN, André FARIAS, Matyas AMROUCHE, Olivier SANS, Théo NAZON",
+    version="1.3.10",
+    author="Pragnesh Krishnan",
     description="An End-To-End Closed Domain Question Answering System",
-    long_description=read("README.md"),
-    long_description_content_type="text/markdown",
     keywords="reading comprehension question answering deep learning natural language processing information retrieval bert",
     license="Apache-2.0",
     url="https://github.com/cdqa-suite/cdQA",

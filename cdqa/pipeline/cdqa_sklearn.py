@@ -81,10 +81,8 @@ class QAPipeline(BaseEstimator):
 
         if not reader:
             self.reader = BertQA(**kwargs_bertqa)
-            print("inside if not reader as well")
         elif type(reader) == str:
             self.reader = joblib.load(reader)
-            print("inside str")
         else:
             self.reader = reader
 

@@ -17,5 +17,5 @@ setup(
     license="Apache-2.0",
     url="https://github.com/cdqa-suite/cdQA",
     packages=find_packages(),
-    install_requires=read("requirements.txt").split(),
+    install_requires=read("requirements_cdqa.txt").split(),
 )

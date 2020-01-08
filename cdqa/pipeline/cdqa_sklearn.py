@@ -8,10 +8,13 @@ import torch
 from sklearn.base import BaseEstimator
 
 from cdqa.retriever import TfidfRetriever, BM25Retriever
+from cdqa.retriever.retriever_sklearn import *
 from cdqa.utils.converters import generate_squad_examples
 from cdqa.reader import BertProcessor, BertQA
 
-RETRIEVERS = {"bm25": BM25Retriever, "tfidf": TfidfRetriever}
+RETRIEVERS = {"bm25": BM25Retriever, 
+              "tfidf": TfidfRetriever,
+              "bm25okapi": BM25Okapi}
 
 
 class QAPipeline(BaseEstimator):
@@ -78,8 +81,10 @@ class QAPipeline(BaseEstimator):
 
         if not reader:
             self.reader = BertQA(**kwargs_bertqa)
+            print("inside if not reader as well")
         elif type(reader) == str:
             self.reader = joblib.load(reader)
+            print("inside str")
         else:
             self.reader = reader
 

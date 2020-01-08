@@ -1,6 +1,8 @@
 import pandas as pd
 import prettytable
 import time
+import math
+import numpy as np
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -328,3 +330,132 @@ class BM25Retriever(BaseRetriever):
         question_vector = self.vectorizer.transform([query], is_query=True)
         scores = self.bm25_matrix.dot(question_vector.T).toarray()
         return scores
+
+
+class BM25Okapi(BaseRetriever):
+    #def __init__(self, corpus, tokenizer=None, k1=1.5, b=0.75, epsilon=0.25):
+    def __init__(self, 
+                 lowercase=True,
+                 preprocessor=None,
+                 tokenizer=None, 
+                 k1=1.5, 
+                 b=0.75, 
+                 epsilon=0.25, 
+                 top_n = 1, 
+                 retrieve_by_doc=True,
+                 verbose=True):
+        
+        # Init parameters
+        self.lowercase = lowercase
+        self.preprocessor = preprocessor
+        self.tokenizer = tokenizer
+        self.k1 = k1
+        self.b = b
+        self.epsilon = epsilon
+        self.top_n = top_n
+        self.retrieve_by_doc = retrieve_by_doc
+        
+        # Computed variables
+        self.avgdl = 0
+        self.doc_freqs = []
+        self.idf = {}
+        self.doc_len = []
+        self.corpus_size = 0
+        self.paragraphs = None
+        
+        super().__init__(None,self.top_n, verbose)
+
+    def _fit_vectorizer(self, df, y=None):
+        #corpus = [doc.split(" ") for doc in df["content"].copy()]
+        corpus = df["content"].copy()
+        #corpus = self._tokenize_corpus(corpus) 
+        
+        stemmer = SnowballStemmer('english')
+        for idx,i in enumerate(corpus):
+            corpus[idx] = " ".join(stemmer.stem(x) for x in i.split())
+        tokenized_corpus = [doc.split(" ") for doc in corpus]
+        
+        self.corpus_size = len(corpus)
+        nd = self._initialize(tokenized_corpus)
+        self._calc_idf(nd)
+        return self
+
+    def _tokenize_corpus(self, corpus):
+        tokenizer = RegexpTokenizer("\w+")
+        return corpus.apply(lambda x: tokenizer.tokenize(x)) \
+                 .apply(lambda x: " ".join(x))
+        
+
+    def _initialize(self, corpus):
+        nd = {}  # word -> number of documents with word
+        num_doc = 0
+        for document in corpus:
+            self.doc_len.append(len(document))
+            num_doc += len(document)
+
+            frequencies = {}
+            for word in document:
+                if word not in frequencies:
+                    frequencies[word] = 0
+                frequencies[word] += 1
+            self.doc_freqs.append(frequencies)
+
+            for word, freq in frequencies.items():
+                if word not in nd:
+                    nd[word] = 0
+                nd[word] += 1
+
+        self.avgdl = num_doc / self.corpus_size
+        return nd
+
+    def _calc_idf(self, nd):
+        """
+        Calculates frequencies of terms in documents and in corpus.
+        This algorithm sets a floor on the idf values to eps * average_idf
+        """
+        # collect idf sum to calculate an average idf for epsilon value
+        idf_sum = 0
+        # collect words with negative idf to set them a special epsilon value.
+        # idf can be negative if word is contained in more than half of documents
+        negative_idfs = []
+        for word, freq in nd.items():
+            idf = math.log(self.corpus_size - freq + 0.5) - math.log(freq + 0.5)
+            self.idf[word] = idf
+            idf_sum += idf
+            if idf < 0:
+                negative_idfs.append(word)
+        self.average_idf = idf_sum / len(self.idf)
+
+        eps = self.epsilon * self.average_idf
+        for word in negative_idfs:
+            self.idf[word] = eps
+
+    def get_top_n(self, query, documents, n=5):
+        assert self.corpus_size == len(documents), "The documents given don't match the index corpus!"
+
+        scores = self._compute_scores(query)
+        top_n = np.argsort(scores)[::-1][:n]
+        return [documents[i] for i in top_n]
+
+    def _compute_scores(self, query):
+        """
+        The ATIRE BM25 variant uses an idf function which uses a log(idf) score. To prevent negative idf scores,
+        this algorithm also adds a floor to the idf value of epsilon.
+        See [Trotman, A., X. Jia, M. Crane, Towards an Efficient and Effective Search Engine] for more info
+        :param query:
+        :return:
+        """
+        stemmer = SnowballStemmer('english')
+        score = np.zeros(self.corpus_size)
+        doc_len = np.array(self.doc_len)
+        tokenized_query = query.split(" ")
+        for idx,i in enumerate(tokenized_query):
+            tokenized_query[idx] = stemmer.stem(i)
+
+        #print("Tokenized query: {}".format(tokenized_query))
+        for q in tokenized_query:
+            q_freq = np.array([(doc.get(q) or 0) for doc in self.doc_freqs])
+            score += (self.idf.get(q) or 0) * (q_freq * (self.k1 + 1) /
+                                               (q_freq + self.k1 * (1 - self.b + self.b * doc_len / self.avgdl)))
+        #print(score)    
+        return score
